@@ -1,10 +1,30 @@
-<script type = "text/javascript" src="set_annotations.js"></script>  
+<script type="text/javascript" src="set_annotations.js?t=<?=time();?>"></script>
+
+<head>
+    <style>
+        table {
+            font-family: arial, sans-serif;
+            border-collapse: collapse;
+            width: 100%;
+        }
+
+        td,
+        th {
+            border: 1px solid #dddddd;
+            text-align: left;
+            padding: 8px;
+        }
+
+        tr:nth-child(even) {
+            background-color: #dddddd;
+        }
+    </style>
+</head>
 <label for="neuroglancer_URL">Neuroglancer URL:</label>
 </br>
 <textarea type="text" id="neuroglancer_URL" name="neuroglancer_URL" row="4" cols="50"></textarea>
 </br>
-<input type = "button" onclick = "extract()" value = "Set Annotations">  
-
+<input type="button" onclick="extract()" value="Set Annotations">
 </br>
 <input type="file" id="fileUpload" />
 <input type="button" id="upload" value="Upload" onclick="Upload()" />
