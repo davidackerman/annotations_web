@@ -1,0 +1,1 @@
+{"@type": "neuroglancer_annotations_v1", "dimensions": {"x": [1, "nm"], "y": [1, "nm"], "z": [1, "nm"]}, "by_id": {"key": "by_id"}, "lower_bound": [0, 0, 0], "upper_bound": [48000, 6400, 33368], "annotation_type": "LINE", "properties": [], "relationships": [], "spatial": [{"chunk_size": [48000, 6400, 33368], "grid_shape": [1, 1, 1], "key": "spatial0", "limit": 1}]}

@@ -1,0 +1,41 @@
+<label for="neuroglancer_URL">Neuroglancer URL:</label>
+</br>
+<form method="POST" id="url-form">
+    <textarea type="text" id="neuroglancer_url" name="neuroglancer_url" row="4" cols="50"
+        maxlength="10000000"></textarea>
+    </br>
+    <input type="submit" value="Download Annotations">
+</form>
+<a href="" style="display: none" id="hyperlink" target="_blank"></a>
+
+
+<script src="https://code.jquery.com/jquery-3.5.1.js" integrity="sha256-QWo7LDvxbWT2tbbQ97B53yJnYU3WhH/C8ycbRAkjPDc="
+    crossorigin="anonymous"></script>
+
+<script type="text/javascript">
+    $(document).on('submit', '#url-form', function (e) {
+        console.log('hello');
+        console.log($("#neuroglancer_url").val())
+        e.preventDefault();
+        $.ajax({
+            type: 'POST',
+            url: 'get_annotations',
+            data: {
+                neuroglancer_url: $("#neuroglancer_url").val()
+            },
+            success: function (msg) {
+                jsonData = msg;
+                var hiddenElement = document.createElement('a');
+                hiddenElement.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(jsonData["csv_data"]);
+                hiddenElement.target = '_blank';
+                //provide the name for the CSV file to be downloaded  
+                hiddenElement.download = "annotations_" + jsonData['write_time'] + ".csv";
+                hiddenElement.click();
+                var hyperlink = document.getElementById('hyperlink');
+                hyperlink.href = jsonData['new_url']
+                hyperlink.innerHTML = "Click here for annotation link created at " + jsonData['write_time']
+                hyperlink.style.display = "block"
+            }
+        })
+    });
+</script>

@@ -1,0 +1,18 @@
+<script type="text/javascript" src="get_annotations_copy.js?t=<?=time();?>"></script>
+<label for="neuroglancer_URL">Neuroglancer URL:</label>
+</br>
+<textarea type="text" id="neuroglancer_URL" name="neuroglancer_URL" row="4" cols="50" maxlength="10000000"></textarea>
+</br>
+<input type="button" onclick="test()" value="Download Annotations">
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.1/jquery.min.js"></script>
+<script type="text/javascript">
+    function test() {
+        $.ajax({
+            type: "POST",
+            url: "/groups/cellmap/cellmap/ackermand/temp.py",
+            data: { param: "yo" }
+        }).done(function (o) {
+            // do something
+        });
+    }
+</script>
