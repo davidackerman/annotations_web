@@ -78,10 +78,10 @@ def write_precomputed_annotations(annotations):
 
     os.makedirs(f"{output_directory}/spatial0")
     with open(f"{output_directory}/spatial0/0_0_0", "wb") as outfile:
-        total_count = len(annotations)  # coordinates is a list of tuples (x,y,z)
+        total_count = len(annotations)
         buf = struct.pack("<Q", total_count)
         for annotation in annotations:
-            line_buf = struct.pack("<6f", *annotation)  # x,y,z,10,10,10)
+            line_buf = struct.pack("<6f", *annotation)
             buf += line_buf
         # write the ids at the end of the buffer as increasing integers
         id_buf = struct.pack(
