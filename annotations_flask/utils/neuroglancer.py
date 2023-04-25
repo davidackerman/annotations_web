@@ -67,13 +67,13 @@ def extract_precomputed_annotations(layer):
 def write_precomputed_annotations(annotations):
     write_time = datetime.now().strftime("%Y%m%d_%H%M%S")
     output_directory = (
-        "/groups/cellmap/cellmap/ackermand/leaf-gall-annotations/" + write_time
+        "/groups/cellmap/cellmap/ackermand/neuroglancer_annotations/" + write_time
     )
     while os.path.exists(output_directory):
         sleep(1)
         write_time = datetime.now().strftime("%Y%m%d_%H%M%S")
         output_directory = (
-            "/groups/cellmap/cellmap/ackermand/leaf-gall-annotations/" + write_time
+            "/groups/cellmap/cellmap/ackermand/neuroglancer_annotations/" + write_time
         )
 
     os.makedirs(f"{output_directory}/spatial0")
