@@ -1,0 +1,31 @@
+<label for="neuroglancer_URL">Neuroglancer URL:</label>
+</br>
+<form method="POST" id="url-form">
+    <textarea type="text" id="neuroglancer_url" name="neuroglancer_url" row="4" cols="50"
+        maxlength="10000000"></textarea>
+    </br>
+    <input type="submit" value="Get Editable Annotations">
+</form>
+<a href="" style="display: none" id="hyperlink" target="_blank"></a>
+<script src="https://code.jquery.com/jquery-3.5.1.js" integrity="sha256-QWo7LDvxbWT2tbbQ97B53yJnYU3WhH/C8ycbRAkjPDc="
+    crossorigin="anonymous"></script>
+
+<script type="text/javascript">
+    $(document).on('submit', '#url-form', function (e) {
+        e.preventDefault();
+        $.ajax({
+            type: 'POST',
+            url: 'get_editable_annotations',
+            data: {
+                neuroglancer_url: $("#neuroglancer_url").val()
+            },
+            success: function (msg) {
+                jsonData = msg;
+                var hyperlink = document.getElementById('hyperlink');
+                hyperlink.href = jsonData['new_url']
+                hyperlink.innerHTML = "Click here for editable annotation link"
+                hyperlink.style.display = "block"
+            }
+        })
+    });
+</script>

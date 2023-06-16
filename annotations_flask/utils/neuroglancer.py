@@ -9,6 +9,12 @@ from datetime import datetime
 import urllib
 
 
+def get_annotations_from_url(neuroglancer_url):
+    info_dict = json.loads(urllib.parse.unquote(neuroglancer_url.split("/#!")[1]))
+    annotations = get_annotations(info_dict)
+    return annotations
+
+
 def get_annotations(info_dict):
     precomputed_annotations = None
     local_annotations = None
@@ -156,3 +162,40 @@ def create_new_url_with_precomputed_annotations(neuroglancer_url):
     annotations = get_annotations(info_dict)
     write_time, precomputed_source = write_precomputed_annotations(annotations)
     return annotations, write_time, generate_new_url(info_dict, precomputed_source)
+
+
+def set_local_annotations(neuroglancer_url):
+    info_dict = json.loads(urllib.parse.unquote(neuroglancer_url.split("/#!")[1]))
+
+    annotations = get_annotations(info_dict)
+
+    precomputed_layer = None
+    for layer in info_dict["layers"]:
+        if layer["type"] == "annotation":
+            if "precomputed" in layer["source"]:
+                precomputed_layer = layer
+            elif layer["source"]["url"] == "local://annotations":
+                voxel_dim = [
+                    layer["source"]["transform"]["outputDimensions"]["x"][0] * 1e9,
+                    layer["source"]["transform"]["outputDimensions"]["y"][0] * 1e9,
+                    layer["source"]["transform"]["outputDimensions"]["z"][0] * 1e9
+                    ]
+                print(layer["annotations"])
+                # remove local annotations
+                local_layer = layer
+                local_layer["annotations"] = []
+    for id, annotation in enumerate(annotations):
+        local_layer["annotations"].append(
+            {
+                "pointA": [annotation[i]/voxel_dim[i]for i in range(3)],
+                "pointB":  [annotation[i+3]/voxel_dim[i]for i in range(3)],
+                "type": "line",
+                "id": f'{id}+1'
+            }
+        )
+    if precomputed_layer:
+        info_dict["layers"].remove(precomputed_layer)
+    new_url = "http://renderer.int.janelia.org:8080/ng/#!" + urllib.parse.quote(
+        json.dumps(info_dict)
+    )
+    return new_url

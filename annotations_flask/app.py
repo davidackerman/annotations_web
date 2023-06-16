@@ -1,9 +1,10 @@
 # app.py
 import csv
 from io import StringIO
+import webbrowser
 from flask import Flask, make_response, render_template, request, redirect
 from flask import jsonify
-from utils.neuroglancer import create_new_url_with_precomputed_annotations
+from utils.neuroglancer import create_new_url_with_precomputed_annotations, set_local_annotations
 import numpy as np
 
 app = Flask(__name__)
@@ -59,6 +60,17 @@ def set_annotations():
     return render_template("set_annotations.html")
 
 
+@app.route("/get_editable_annotations", methods=["GET", "POST"])
+def get_editable_annotations():
+    new_url = None
+    if request.method == "POST":
+        neuroglancer_url = request.values.get("neuroglancer_url")
+        new_url = set_local_annotations(neuroglancer_url)
+        return {
+            "new_url": new_url,
+        }
+    return render_template("get_editable_annotations.html")
+
 # A function to add two numbers
 @app.route("/add")
 def add():
@@ -68,4 +80,4 @@ def add():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", debug=False)
+    app.run(host="0.0.0.0", debug=True)
