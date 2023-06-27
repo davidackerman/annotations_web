@@ -21,26 +21,39 @@ def get_annotations():
     write_time = None
     if request.method == "POST":
         neuroglancer_url = request.values.get("neuroglancer_url")
-        (
+        (   
+            annotation_type,
             all_annotations,
             write_time,
             new_url,
         ) = create_new_url_with_precomputed_annotations(neuroglancer_url)
         csv_data = StringIO()
         writer = csv.writer(csv_data)
-        writer.writerow(
-            [
-                "id",
-                "start x (nm)",
-                "start y (nm)",
-                "start z (nm)",
-                "end x (nm)",
-                "end y (nm)",
-                "end z (nm)",
-                "",
-                "neuroglancer url",
-            ]
-        )
+        if annotation_type=="line":
+            writer.writerow(
+                [
+                    "id",
+                    "start x (nm)",
+                    "start y (nm)",
+                    "start z (nm)",
+                    "end x (nm)",
+                    "end y (nm)",
+                    "end z (nm)",
+                    "",
+                    "neuroglancer url",
+                ]
+            )
+        else:
+            writer.writerow(
+                [
+                    "id",
+                    "x (nm)",
+                    "y (nm)",
+                    "z (nm)",
+                    "",
+                    "neuroglancer url",
+                ]
+            )
         for idx in range(all_annotations.shape[0]):
             if idx == 0:
                 writer.writerow([idx + 1, *all_annotations[idx, :], "", new_url])

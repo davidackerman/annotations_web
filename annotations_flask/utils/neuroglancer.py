@@ -15,41 +15,61 @@ def get_annotations_from_url(neuroglancer_url):
     return annotations
 
 
+def get_annotation_type(layer):
+    # hacky way to get annotation type, we are currently assuming only one type of annotation is present for each layer
+    # and that it is the currently selected annotation type
+    return ["line" if layer["tool"] == "annotateLine" else "point"][0]
+
+
 def get_annotations(info_dict):
     precomputed_annotations = None
     local_annotations = None
+    annotation_type = None
     for layer in info_dict["layers"]:
         if layer["type"] == "annotation":
             if "precomputed" in layer["source"]:
-                precomputed_annotations = extract_precomputed_annotations(layer)
+                annotation_type, precomputed_annotations = extract_precomputed_annotations(layer)
             elif layer["source"]["url"] == "local://annotations":
                 # then this is the local layer
-                local_annotations = extract_local_annotations(layer)
-
-    if precomputed_annotations is not None:
+                annotation_type, local_annotations = extract_local_annotations(layer)
+ 
+    if precomputed_annotations is not None and local_annotations is not None:
         annotations = np.concatenate((precomputed_annotations, local_annotations))
-    else:
+    elif local_annotations is not None:
         annotations = local_annotations
-    return annotations
+    else:
+        annotations = precomputed_annotations
+
+    return annotation_type, annotations
 
 
 def extract_local_annotations(layer):
     x_dims = layer["source"]["transform"]["outputDimensions"]["x"]
     y_dims = layer["source"]["transform"]["outputDimensions"]["y"]
     z_dims = layer["source"]["transform"]["outputDimensions"]["z"]
-
-    annotation_data = np.zeros((len(layer["annotations"]), 6))
-    for idx, current_annotation in enumerate(layer["annotations"]):
-        # assume that it is in url as m, so divide by 1e-9 to get it in nm
-        annotation_data[idx, :] = [
-            current_annotation["pointA"][0] * x_dims[0] * 1e9,
-            current_annotation["pointA"][1] * y_dims[0] * 1e9,
-            current_annotation["pointA"][2] * z_dims[0] * 1e9,
-            current_annotation["pointB"][0] * x_dims[0] * 1e9,
-            current_annotation["pointB"][1] * y_dims[0] * 1e9,
-            current_annotation["pointB"][2] * z_dims[0] * 1e9,
-        ]
-    return annotation_data
+    annotation_type = get_annotation_type(layer)
+    if annotation_type == "line":
+        annotation_data = np.zeros((len(layer["annotations"]), 6))
+        for idx, current_annotation in enumerate(layer["annotations"]):
+            # assume that it is in url as m, so divide by 1e-9 to get it in nm
+            annotation_data[idx, :] = [
+                current_annotation["pointA"][0] * x_dims[0] * 1e9,
+                current_annotation["pointA"][1] * y_dims[0] * 1e9,
+                current_annotation["pointA"][2] * z_dims[0] * 1e9,
+                current_annotation["pointB"][0] * x_dims[0] * 1e9,
+                current_annotation["pointB"][1] * y_dims[0] * 1e9,
+                current_annotation["pointB"][2] * z_dims[0] * 1e9,
+            ]
+    else:
+        annotation_data = np.zeros((len(layer["annotations"]), 3))
+        for idx, current_annotation in enumerate(layer["annotations"]):
+            # assume that it is in url as m, so divide by 1e-9 to get it in nm
+            annotation_data[idx, :] = [
+                current_annotation["point"][0] * x_dims[0] * 1e9,
+                current_annotation["point"][1] * y_dims[0] * 1e9,
+                current_annotation["point"][2] * z_dims[0] * 1e9,
+            ]
+    return annotation_type, annotation_data
 
 
 def extract_precomputed_annotations(layer):
@@ -62,15 +82,21 @@ def extract_precomputed_annotations(layer):
 
     # need to specify which bytes to read
     num_annotations = struct.unpack("<Q", annotation_index_content[:8])[0]
+    if (len(annotation_index_content)-8) % (((6+2)*num_annotations*4)) == 0: # if it is for a line, there are 6 coordinates to write (4 bytes each), +2 other info stuff?
+        annotation_type = "line"
+        coords_to_write = 6
+    else:
+        annotation_type = "point"
+        coords_to_write = 3
     annotation_data = struct.unpack(
-        f"<Q{6*num_annotations}f",
-        annotation_index_content[: 8 + 6 * num_annotations * 4],
+        f"<Q{coords_to_write*num_annotations}f",
+        annotation_index_content[: 8 + coords_to_write * num_annotations * 4],
     )
-    annotation_data = np.reshape(np.array(annotation_data[1:]), (num_annotations, 6))
-    return annotation_data
+    annotation_data = np.reshape(np.array(annotation_data[1:]), (num_annotations, coords_to_write))
+    return annotation_type, annotation_data
 
 
-def write_precomputed_annotations(annotations):
+def write_precomputed_annotations(annotation_type, annotations):
     write_time = datetime.now().strftime("%Y%m%d_%H%M%S")
     output_directory = (
         "/groups/cellmap/cellmap/ackermand/neuroglancer_annotations/" + write_time
@@ -83,12 +109,19 @@ def write_precomputed_annotations(annotations):
         )
 
     os.makedirs(f"{output_directory}/spatial0")
+
+    if annotation_type == "line":
+        coords_to_write = 6
+    else:
+        coords_to_write = 3
+
+    
     with open(f"{output_directory}/spatial0/0_0_0", "wb") as outfile:
         total_count = len(annotations)
         buf = struct.pack("<Q", total_count)
         for annotation in annotations:
-            line_buf = struct.pack("<6f", *annotation)
-            buf += line_buf
+            annotation_buf = struct.pack(f"<{coords_to_write}f", *annotation)
+            buf += annotation_buf
         # write the ids at the end of the buffer as increasing integers
         id_buf = struct.pack(
             f"<{total_count}Q", *range(1, len(annotations) + 1, 1)
@@ -105,7 +138,7 @@ def write_precomputed_annotations(annotations):
         "by_id": {"key": "by_id"},
         "lower_bound": [0, 0, 0],
         "upper_bound": max_extents,
-        "annotation_type": "LINE",
+        "annotation_type": annotation_type,
         "properties": [],
         "relationships": [],
         "spatial": [
@@ -145,10 +178,13 @@ def generate_new_url(info_dict, precomputed_source):
             "source": precomputed_source,
             "tab": "source",
             "annotationColor": "#8b8b23",
-            "shader": local_layer["shader"],
-            "shaderControls": local_layer["shaderControls"],
             "name": "saved_annotations",
         }
+
+        if "shader" in local_layer:
+            precomputed_layer["shader"] = local_layer["shader"]
+            precomputed_layer["shaderControls"] = local_layer["shaderControls"]
+        
         info_dict["layers"].append(precomputed_layer)
 
     new_url = "http://renderer.int.janelia.org:8080/ng/#!" + urllib.parse.quote(
@@ -159,15 +195,15 @@ def generate_new_url(info_dict, precomputed_source):
 
 def create_new_url_with_precomputed_annotations(neuroglancer_url):
     info_dict = json.loads(urllib.parse.unquote(neuroglancer_url.split("/#!")[1]))
-    annotations = get_annotations(info_dict)
-    write_time, precomputed_source = write_precomputed_annotations(annotations)
-    return annotations, write_time, generate_new_url(info_dict, precomputed_source)
+    annotation_type, annotations = get_annotations(info_dict)
+    write_time, precomputed_source = write_precomputed_annotations(annotation_type, annotations)
+    return annotation_type, annotations, write_time, generate_new_url(info_dict, precomputed_source)
 
 
 def set_local_annotations(neuroglancer_url):
     info_dict = json.loads(urllib.parse.unquote(neuroglancer_url.split("/#!")[1]))
 
-    annotations = get_annotations(info_dict)
+    annotation_type, annotations = get_annotations(info_dict)
 
     precomputed_layer = None
     for layer in info_dict["layers"]:
@@ -180,15 +216,16 @@ def set_local_annotations(neuroglancer_url):
                     layer["source"]["transform"]["outputDimensions"]["y"][0] * 1e9,
                     layer["source"]["transform"]["outputDimensions"]["z"][0] * 1e9
                     ]
-                print(layer["annotations"])
                 # remove local annotations
                 local_layer = layer
                 local_layer["annotations"] = []
+
+    print(annotations[:10])
     for id, annotation in enumerate(annotations):
         local_layer["annotations"].append(
             {
-                "pointA": [annotation[i]/voxel_dim[i]for i in range(3)],
-                "pointB":  [annotation[i+3]/voxel_dim[i]for i in range(3)],
+                "pointA": [annotation[i]/voxel_dim[i] for i in range(3)],
+                "pointB":  [annotation[i+3]/voxel_dim[i] for i in range(3)],
                 "type": "line",
                 "id": f'{id}+1'
             }
