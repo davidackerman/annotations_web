@@ -203,7 +203,7 @@ def create_new_url_with_precomputed_annotations(neuroglancer_url):
 def set_local_annotations(neuroglancer_url):
     info_dict = json.loads(urllib.parse.unquote(neuroglancer_url.split("/#!")[1]))
 
-    annotation_type, annotations = get_annotations(info_dict)
+    _, annotations = get_annotations(info_dict)
 
     precomputed_layer = None
     for layer in info_dict["layers"]:
@@ -220,7 +220,6 @@ def set_local_annotations(neuroglancer_url):
                 local_layer = layer
                 local_layer["annotations"] = []
 
-    print(annotations[:10])
     for id, annotation in enumerate(annotations):
         local_layer["annotations"].append(
             {
