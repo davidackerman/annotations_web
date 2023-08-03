@@ -115,7 +115,6 @@ def write_precomputed_annotations(annotation_type, annotations):
     else:
         coords_to_write = 3
 
-    
     with open(f"{output_directory}/spatial0/0_0_0", "wb") as outfile:
         total_count = len(annotations)
         buf = struct.pack("<Q", total_count)
@@ -129,21 +128,23 @@ def write_precomputed_annotations(annotation_type, annotations):
         # id_buf = struct.pack('<%sQ' % len(coordinates), 3,1 )#s*range(len(coordinates)))
         buf += id_buf
         outfile.write(buf)
-
+    
+    min_extents = annotations.reshape((-1, 3)).min(axis=0) - 1
     max_extents = annotations.reshape((-1, 3)).max(axis=0) + 1
+    min_extents = [int(min_extent) for min_extent in min_extents]
     max_extents = [int(max_extent) for max_extent in max_extents]
     info = {
         "@type": "neuroglancer_annotations_v1",
         "dimensions": {"x": [1, "nm"], "y": [1, "nm"], "z": [1, "nm"]},
         "by_id": {"key": "by_id"},
-        "lower_bound": [0, 0, 0],
+        "lower_bound": min_extents,
         "upper_bound": max_extents,
         "annotation_type": annotation_type,
         "properties": [],
         "relationships": [],
         "spatial": [
             {
-                "chunk_size": max_extents,
+                "chunk_size": [int(max_extent-min_extent) for max_extent,min_extent in zip(max_extents,min_extents)],
                 "grid_shape": [1, 1, 1],
                 "key": "spatial0",
                 "limit": 1,
