@@ -188,7 +188,7 @@ def generate_new_url(info_dict, precomputed_source):
         
         info_dict["layers"].append(precomputed_layer)
 
-    new_url = "http://renderer.int.janelia.org:8080/ng/#!" + urllib.parse.quote(
+    new_url = "https://neuroglancer-demo.appspot.com/#!" + urllib.parse.quote(
         json.dumps(info_dict)
     )
     return new_url
