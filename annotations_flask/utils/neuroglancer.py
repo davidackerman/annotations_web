@@ -44,9 +44,9 @@ def get_annotations(info_dict):
 
 
 def extract_local_annotations(layer):
-    x_dims = layer["source"]["transform"]["outputDimensions"]["x"]
-    y_dims = layer["source"]["transform"]["outputDimensions"]["y"]
-    z_dims = layer["source"]["transform"]["outputDimensions"]["z"]
+    x_dims = layer["source"]["transform"]["sourceDimensions"]["0"]
+    y_dims = layer["source"]["transform"]["sourceDimensions"]["1"]
+    z_dims = layer["source"]["transform"]["sourceDimensions"]["2"]
     annotation_type = get_annotation_type(layer)
     if annotation_type == "line":
         annotation_data = np.zeros((len(layer["annotations"]), 6))
@@ -97,6 +97,7 @@ def extract_precomputed_annotations(layer):
 
 
 def write_precomputed_annotations(annotation_type, annotations):
+    print(len(annotations),annotation_type)
     write_time = datetime.now().strftime("%Y%m%d_%H%M%S")
     output_directory = (
         "/groups/cellmap/cellmap/ackermand/neuroglancer_annotations/" + write_time
