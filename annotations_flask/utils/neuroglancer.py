@@ -44,9 +44,16 @@ def get_annotations(info_dict):
 
 
 def extract_local_annotations(layer):
-    x_dims = layer["source"]["transform"]["inputDimensions"]["0"]
-    y_dims = layer["source"]["transform"]["inputDimensions"]["1"]
-    z_dims = layer["source"]["transform"]["inputDimensions"]["2"]
+    if "inputDimensions" in layer["source"]["transform"]:
+        dims_names = ["0", "1", "2"]
+        dims_size = layer["source"]["transform"]["inputDimensions"]
+    else:
+        dims_names = ["x", "y", "z"]
+        dims_size = layer["source"]["transform"]["outputDimensions"]
+
+    x_dims = dims_size[dims_names[0]]
+    y_dims = dims_size[dims_names[1]]
+    z_dims = dims_size[dims_names[2]]
     annotation_type = get_annotation_type(layer)
     if annotation_type == "line":
         annotation_data = np.zeros((len(layer["annotations"]), 6))
