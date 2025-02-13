@@ -1,6 +1,7 @@
 var uploaded_annotations = []
 function UploadUsingCSVData() {
-    uploaded_annotations = []
+    //uploaded_annotations = []
+    console.log("uploaded annotations"+uploaded_annotations)
     var fileUpload = document.getElementById("fileUpload");
     if (typeof (FileReader) != "undefined") {
         var reader = new FileReader();
@@ -18,6 +19,7 @@ function UploadUsingCSVData() {
                         coordinates.push(cells[j]);
                     }
                     if (i > 0) { // then it is not the title
+                        console.log(i)
                         var current_annotation = {
                             "id": coordinates[0],
                             "pointA": [parseFloat(coordinates[1]), parseFloat(coordinates[2]), parseFloat(coordinates[3])],
@@ -33,11 +35,11 @@ function UploadUsingCSVData() {
             dvCSV.appendChild(table);
         }
         reader.readAsText(fileUpload.files[0]);
+        console.log("uploaded annotations"+uploaded_annotations)
     } else {
         alert("This browser does not support HTML5.");
     }
 }
-var uploaded_annotation_layer = null;
 function Upload() {
     uploaded_annotations = []
     var fileUpload = document.getElementById("fileUpload");
@@ -109,60 +111,53 @@ function readFile(file){
   }
 
 
-function extract()   
- {   //if url provided
-    //if url provided and has annotations, then get from other thing and append then 
-    var url = document.getElementById('neuroglancer_URL').value;
-    console.log(url)
-    if(url == ""){
-        var fileUpload = document.getElementById("fileUpload");
-        readFile(fileUpload.files[0]).then(function(){
-            console.log(document.getElementById("hidden_url"))
-            console.log()
-            var neuroglancer_json = JSON.parse(decodeURIComponent(url.split("#!")[1]));
-            console.log(neuroglancer_json)
-            var current_annotation_layer = null;
-            var annotation_layer_idx = null;
-            for (var layer_idx in neuroglancer_json['layers']) {
-                let layer = neuroglancer_json['layers'][layer_idx]
-                if (layer['type'] == "annotation") {
-                    current_annotation_layer = layer;
-                    annotation_layer_idx = layer_idx
-                    break;
-                }
-            }
-            if (uploaded_annotation_layer["annotations"].length == 0) {
-                alert("No annotations uploaded.");
-            }
-            else {
-                if (!current_annotation_layer) {
-                    neuroglancer_json["layers"].push(uploaded_annotation_layer);
-                }
-                else {
-                    console.log("asdfasdfsdf")
-                    var x_scale = uploaded_annotation_layer['source']['transform']['outputDimensions']["x"][0] / current_annotation_layer['source']['transform']['outputDimensions']["x"][0]
-                    var y_scale = uploaded_annotation_layer['source']['transform']['outputDimensions']["y"][0] / current_annotation_layer['source']['transform']['outputDimensions']["y"][0]
-                    var z_scale = uploaded_annotation_layer['source']['transform']['outputDimensions']["z"][0] / current_annotation_layer['source']['transform']['outputDimensions']["z"][0]
-                    for (var j = 0; j < uploaded_annotation_layer['annotations'].length; j++) {
-                        uploaded_annotation_layer['annotations'][j]["pointA"][0] *= x_scale
-                        uploaded_annotation_layer['annotations'][j]["pointA"][1] *= y_scale
-                        uploaded_annotation_layer['annotations'][j]["pointA"][2] *= z_scale
-                        uploaded_annotation_layer['annotations'][j]["pointB"][0] *= x_scale
-                        uploaded_annotation_layer['annotations'][j]["pointB"][1] *= y_scale
-                        uploaded_annotation_layer['annotations'][j]["pointB"][2] *= z_scale
-                    }
-                    current_annotation_layer["annotations"] = current_annotation_layer["annotations"].concat(uploaded_annotation_layer["annotations"])
-                    neuroglancer_json['layers'][annotation_layer_idx] = current_annotation_layer
-                }
-            }
-            //console.log(uploaded_annotation_layer)
-            //console.log(neuroglancer_json)
-            //console.log("http://renderer.int.janelia.org:8080/ng/#!" + encodeURIComponent( JSON.stringify(neuroglancer_json) ));
-            window.open("http://renderer.int.janelia.org:8080/ng/#!" + encodeURIComponent(JSON.stringify(neuroglancer_json)), '_blank');
-        });
-    }
-}
-
+  function extract()   
+  {   //if url provided
+     //if url provided and has annotations, then get from other thing and append then 
+     var url = document.getElementById('neuroglancer_URL').value;
+     var neuroglancer_json = JSON.parse(decodeURIComponent( url.split("#!")[1] ));
+     console.log(neuroglancer_json)
+ 
+     var current_annotation_layer = null;
+     var annotation_layer_idx = null;
+     for (var layer_idx in neuroglancer_json['layers']) {
+         let layer = neuroglancer_json['layers'][layer_idx]
+         if(layer['type'] == "annotation"){
+             current_annotation_layer = layer;
+             annotation_layer_idx = layer_idx
+             break;
+         }
+     }
+     if (uploaded_annotations.length == 0) {
+         alert("No annotations uploaded.");
+     }
+     else {
+         if (!current_annotation_layer) {
+             neuroglancer_json["layers"].push(uploaded_annotation_layer);
+         }
+         else {
+             uploaded_annotation_layer = []
+             //var x_scale = uploaded_annotation_layer['source']['transform']['outputDimensions']["x"][0] / current_annotation_layer['source']['transform']['outputDimensions']["x"][0]
+             //var y_scale = uploaded_annotation_layer['source']['transform']['outputDimensions']["y"][0] / current_annotation_layer['source']['transform']['outputDimensions']["y"][0]
+             //var z_scale = uploaded_annotation_layer['source']['transform']['outputDimensions']["z"][0] / current_annotation_layer['source']['transform']['outputDimensions']["z"][0]
+             for (var j = 0; j < uploaded_annotations.length; j++) {
+                 uploaded_annotation_layer['annotations'][j]["pointA"][0] = uploaded_annotations[j]['pointA'][0]
+                 uploaded_annotation_layer['annotations'][j]["pointA"][1] = uploaded_annotations[j]['pointA'][1]
+                 uploaded_annotation_layer['annotations'][j]["pointA"][2] = uploaded_annotations[j]['pointA'][2]
+                 uploaded_annotation_layer['annotations'][j]["pointB"][0] = uploaded_annotations[j]['pointA'][0]
+                 uploaded_annotation_layer['annotations'][j]["pointB"][1] = uploaded_annotations[j]['pointA'][1]
+                 uploaded_annotation_layer['annotations'][j]["pointB"][2] = uploaded_annotations[j]['pointA'][2]
+             }
+             current_annotation_layer["annotations"] = current_annotation_layer["annotations"].concat(uploaded_annotation_layer["annotations"])
+             neuroglancer_json['layers'][annotation_layer_idx] = current_annotation_layer
+         } 
+     }
+     //console.log(uploaded_annotation_layer)
+     //console.log(neuroglancer_json)
+     //console.log("http://renderer.int.janelia.org:8080/ng/#!" + encodeURIComponent( JSON.stringify(neuroglancer_json) ));
+     window.open("http://renderer.int.janelia.org:8080/ng/#!" + encodeURIComponent(JSON.stringify(neuroglancer_json)), '_blank');
+ 
+ }
 //             x_dims = layer['source']['transform']['outputDimensions']["x"]
 //             y_dims = layer['source']['transform']['outputDimensions']["y"]
 //             z_dims = layer['source']['transform']['outputDimensions']["z"]

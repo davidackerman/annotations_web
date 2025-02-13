@@ -13,8 +13,7 @@
     crossorigin="anonymous"></script>
 
 <script type="text/javascript">
-    $(document).on('submit', '#url-form', function (e) {
-        console.log('hello');
+        $(document).on('submit', '#url-form', function (e) {
         console.log($("#neuroglancer_url").val())
         e.preventDefault();
         $.ajax({

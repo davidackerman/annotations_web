@@ -4,7 +4,10 @@ from io import StringIO
 import webbrowser
 from flask import Flask, make_response, render_template, request, redirect
 from flask import jsonify
-from utils.neuroglancer import create_new_url_with_precomputed_annotations, set_local_annotations
+from utils.neuroglancer import (
+    create_new_url_with_precomputed_annotations,
+    set_local_annotations,
+)
 import numpy as np
 
 app = Flask(__name__)
@@ -21,7 +24,7 @@ def get_annotations():
     write_time = None
     if request.method == "POST":
         neuroglancer_url = request.values.get("neuroglancer_url")
-        (   
+        (
             annotation_type,
             all_annotations,
             write_time,
@@ -29,7 +32,7 @@ def get_annotations():
         ) = create_new_url_with_precomputed_annotations(neuroglancer_url)
         csv_data = StringIO()
         writer = csv.writer(csv_data)
-        if annotation_type=="line":
+        if annotation_type == "line":
             writer.writerow(
                 [
                     "id",
@@ -83,6 +86,7 @@ def get_editable_annotations():
             "new_url": new_url,
         }
     return render_template("get_editable_annotations.html")
+
 
 # A function to add two numbers
 @app.route("/add")
