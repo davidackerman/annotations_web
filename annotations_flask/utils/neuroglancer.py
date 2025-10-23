@@ -29,15 +29,19 @@ def get_annotations(info_dict):
     annotation_type = None
     for layer in info_dict["layers"]:
         if layer["type"] == "annotation":
-            if "precomputed" in layer["source"]:
+            if "precomputed" in layer["source"]["url"]:
+                print("precomputed found", layer)
                 (
                     annotation_type,
                     precomputed_annotations,
                 ) = extract_precomputed_annotations(layer)
+                # apply translation
+                precomputed_annotations = apply_translation_to_annotations(
+                    layer, precomputed_annotations
+                )
             elif layer["source"]["url"] == "local://annotations":
                 # then this is the local layer
                 annotation_type, local_annotations = extract_local_annotations(layer)
-
     if precomputed_annotations is not None and local_annotations is not None:
         annotations = np.concatenate((precomputed_annotations, local_annotations))
     elif local_annotations is not None:
@@ -46,6 +50,48 @@ def get_annotations(info_dict):
         annotations = precomputed_annotations
 
     return annotation_type, annotations
+
+
+def apply_translation_to_annotations(layer, annotations):
+    if "inputDimensions" in layer["source"]["transform"]:
+        input_dim_names = ["0", "1", "2"]
+        dims_size = layer["source"]["transform"]["inputDimensions"]
+    else:
+        input_dim_names = ["x", "y", "z"]
+        dims_size = layer["source"]["transform"]["outputDimensions"]
+
+    output_dim_names = ["x", "y", "z"]
+    dim_index_dict = {
+        output_dim_name: list(dims_size.keys()).index(input_dim_name)
+        for input_dim_name, output_dim_name in zip(input_dim_names, output_dim_names)
+    }
+    x_dims = dims_size[input_dim_names[0]]
+    y_dims = dims_size[input_dim_names[1]]
+    z_dims = dims_size[input_dim_names[2]]
+
+    matrix = np.array(layer["source"]["transform"]["matrix"])
+    translation = np.array(matrix[0:3, 3])
+    annotations[:, dim_index_dict["x"]] += (
+        translation[dim_index_dict["x"]] * x_dims[0] / 1e-9
+    )
+    annotations[:, dim_index_dict["y"]] += (
+        translation[dim_index_dict["y"]] * y_dims[0] / 1e-9
+    )
+    annotations[:, dim_index_dict["z"]] += (
+        translation[dim_index_dict["z"]] * z_dims[0] / 1e-9
+    )
+    if annotations.shape[1] == 6:
+        annotations[:, dim_index_dict["x"] + 3] += (
+            translation[dim_index_dict["x"]] * x_dims[0] / 1e-9
+        )
+        annotations[:, dim_index_dict["y"] + 3] += (
+            translation[dim_index_dict["y"]] * y_dims[0] / 1e-9
+        )
+        annotations[:, dim_index_dict["z"] + 3] += (
+            translation[dim_index_dict["z"]] * z_dims[0] / 1e-9
+        )
+
+    return annotations
 
 
 def extract_local_annotations(layer):
@@ -96,7 +142,7 @@ def extract_local_annotations(layer):
 def extract_precomputed_annotations(layer):
     base_directory = "/groups/cellmap/cellmap/"
     annotation_index = (
-        base_directory + layer["source"].split("dm11/")[1] + "/spatial0/0_0_0"
+        base_directory + layer["source"]["url"].split("dm11/")[1] + "/spatial0/0_0_0"
     )
     with open(annotation_index, mode="rb") as file:
         annotation_index_content = file.read()
@@ -105,10 +151,9 @@ def extract_precomputed_annotations(layer):
     num_annotations = struct.unpack("<Q", annotation_index_content[:8])[0]
     if (len(annotation_index_content) - 8) % (
         ((6 + 2) * num_annotations * 4)
-    ) == 0 :  # if it is for a line, there are 6 coordinates to write (4 bytes each), +2 other info stuff?
+    ) == 0:  # if it is for a line, there are 6 coordinates to write (4 bytes each), +2 other info stuff?
         annotation_type = "line"
         coords_to_write = 6
-        print(f"line")
     else:
         annotation_type = "point"
         coords_to_write = 3
@@ -193,6 +238,7 @@ def write_precomputed_annotations(annotation_type, annotations):
 
 def generate_new_url(info_dict, precomputed_source):
     precomputed_layer = None
+    local_layer = None
     for layer in info_dict["layers"]:
         if layer["type"] == "annotation":
             if "precomputed" in layer["source"]:
@@ -218,7 +264,7 @@ def generate_new_url(info_dict, precomputed_source):
             "name": "saved_annotations",
         }
 
-        if "shader" in local_layer:
+        if local_layer and "shader" in local_layer:
             precomputed_layer["shader"] = local_layer["shader"]
             if "shaderControls" in local_layer:
                 precomputed_layer["shaderControls"] = local_layer["shaderControls"]
