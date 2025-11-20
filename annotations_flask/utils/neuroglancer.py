@@ -23,14 +23,22 @@ def get_annotation_type(layer):
     return annotation_type
 
 
+def get_layer_source_url(layer):
+    if "url" in layer["source"]:
+        return layer["source"]["url"]
+    else:
+        return layer["source"]
+
+
 def get_annotations(info_dict):
     precomputed_annotations = None
     local_annotations = None
     annotation_type = None
+    print(info_dict["layers"])
     for layer in info_dict["layers"]:
         if layer["type"] == "annotation":
-            if "precomputed" in layer["source"]["url"]:
-                print("precomputed found", layer)
+            print("found annotation layer", layer)
+            if "precomputed" in get_layer_source_url(layer):
                 (
                     annotation_type,
                     precomputed_annotations,
@@ -39,7 +47,7 @@ def get_annotations(info_dict):
                 precomputed_annotations = apply_translation_to_annotations(
                     layer, precomputed_annotations
                 )
-            elif layer["source"]["url"] == "local://annotations":
+            elif get_layer_source_url(layer) == "local://annotations":
                 # then this is the local layer
                 annotation_type, local_annotations = extract_local_annotations(layer)
     if precomputed_annotations is not None and local_annotations is not None:
@@ -53,7 +61,10 @@ def get_annotations(info_dict):
 
 
 def apply_translation_to_annotations(layer, annotations):
-    if "inputDimensions" in layer["source"]["transform"]:
+    if "transform" not in layer["source"]:
+        input_dim_names = ["x", "y", "z"]
+        dims_size = {"x": [1], "y": [1], "z": [1]}
+    elif "inputDimensions" in layer["source"]["transform"]:
         input_dim_names = ["0", "1", "2"]
         dims_size = layer["source"]["transform"]["inputDimensions"]
     else:
@@ -68,8 +79,27 @@ def apply_translation_to_annotations(layer, annotations):
     x_dims = dims_size[input_dim_names[0]]
     y_dims = dims_size[input_dim_names[1]]
     z_dims = dims_size[input_dim_names[2]]
+    # apply scaling from the matrix
+    if "transform" in layer["source"]:
+        matrix = np.array(layer["source"]["transform"]["matrix"])
+        scale_x = matrix[dim_index_dict["x"], dim_index_dict["x"]]
+        scale_y = matrix[dim_index_dict["y"], dim_index_dict["y"]]
+        scale_z = matrix[dim_index_dict["z"], dim_index_dict["z"]]
 
-    matrix = np.array(layer["source"]["transform"]["matrix"])
+        annotations[:, dim_index_dict["x"]] *= scale_x
+        annotations[:, dim_index_dict["y"]] *= scale_y
+        annotations[:, dim_index_dict["z"]] *= scale_z
+
+        if annotations.shape[1] == 6:
+            annotations[:, dim_index_dict["x"] + 3] *= scale_x
+            annotations[:, dim_index_dict["y"] + 3] *= scale_y
+            annotations[:, dim_index_dict["z"] + 3] *= scale_z
+    if "transform" not in layer["source"]:
+        matrix = np.eye(4)
+    else:
+        matrix = np.array(layer["source"]["transform"]["matrix"])
+
+    # do scaling first
     translation = np.array(matrix[0:3, 3])
     annotations[:, dim_index_dict["x"]] += (
         translation[dim_index_dict["x"]] * x_dims[0] / 1e-9
@@ -141,9 +171,8 @@ def extract_local_annotations(layer):
 
 def extract_precomputed_annotations(layer):
     base_directory = "/groups/cellmap/cellmap/"
-    annotation_index = (
-        base_directory + layer["source"]["url"].split("dm11/")[1] + "/spatial0/0_0_0"
-    )
+    source_url = get_layer_source_url(layer)
+    annotation_index = base_directory + source_url.split("dm11/")[1] + "/spatial0/0_0_0"
     with open(annotation_index, mode="rb") as file:
         annotation_index_content = file.read()
 
@@ -239,12 +268,13 @@ def write_precomputed_annotations(annotation_type, annotations):
 def generate_new_url(info_dict, precomputed_source):
     precomputed_layer = None
     local_layer = None
+    saved_annotations_layer = None
     for layer in info_dict["layers"]:
         if layer["type"] == "annotation":
             if "precomputed" in layer["source"]:
                 precomputed_layer = layer
                 precomputed_layer["source"] = precomputed_source
-            elif layer["source"]["url"] == "local://annotations" and (
+            elif get_layer_source_url(layer) == "local://annotations" and (
                 get_annotation_type(layer)
                 in [
                     "line",
@@ -254,8 +284,15 @@ def generate_new_url(info_dict, precomputed_source):
                 # remove local annotations
                 local_layer = layer
                 local_layer["annotations"] = []
+            elif layer.get("name") == "saved_annotations":
+                # Track existing saved_annotations layer for removal
+                saved_annotations_layer = layer
 
     if precomputed_layer is None:
+        # Remove old saved_annotations layer if it exists
+        if saved_annotations_layer:
+            info_dict["layers"].remove(saved_annotations_layer)
+
         precomputed_layer = {
             "type": "annotation",
             "source": precomputed_source,
@@ -301,7 +338,7 @@ def set_local_annotations(neuroglancer_url):
         if layer["type"] == "annotation":
             if "precomputed" in layer["source"]:
                 precomputed_layer = layer
-            elif layer["source"]["url"] == "local://annotations":
+            elif get_layer_source_url(layer) == "local://annotations":
                 voxel_dim = [
                     layer["source"]["transform"]["outputDimensions"]["x"][0] * 1e9,
                     layer["source"]["transform"]["outputDimensions"]["y"][0] * 1e9,
