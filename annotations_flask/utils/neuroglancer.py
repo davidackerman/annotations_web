@@ -1,6 +1,8 @@
+import copy
 import struct
 import numpy as np
 import os
+import re
 import struct
 import numpy as np
 import json
@@ -125,44 +127,88 @@ def apply_translation_to_annotations(layer, annotations):
 
 
 def extract_local_annotations(layer):
-    if "inputDimensions" in layer["source"]["transform"]:
-        input_dim_names = ["0", "1", "2"]
-        dims_size = layer["source"]["transform"]["inputDimensions"]
+    # Handle source as plain string (no transform) vs dict with transform
+    source = layer["source"]
+    has_transform = isinstance(source, dict) and "transform" in source
+
+    if has_transform:
+        if "inputDimensions" in source["transform"]:
+            input_dim_names = ["0", "1", "2"]
+            dims_size = source["transform"]["inputDimensions"]
+        else:
+            input_dim_names = ["x", "y", "z"]
+            dims_size = source["transform"]["outputDimensions"]
+
+        output_dim_names = ["x", "y", "z"]
+        dim_index_dict = {
+            output_dim_name: list(dims_size.keys()).index(input_dim_name)
+            for input_dim_name, output_dim_name in zip(
+                input_dim_names, output_dim_names
+            )
+        }
+
+        x_dims = dims_size[input_dim_names[0]]
+        y_dims = dims_size[input_dim_names[1]]
+        z_dims = dims_size[input_dim_names[2]]
     else:
-        input_dim_names = ["x", "y", "z"]
-        dims_size = layer["source"]["transform"]["outputDimensions"]
+        # no transform: assume x,y,z identity mapping, coordinates already in nm
+        dim_index_dict = {"x": 0, "y": 1, "z": 2}
+        x_dims = [1e-9]
+        y_dims = [1e-9]
+        z_dims = [1e-9]
 
-    output_dim_names = ["x", "y", "z"]
-    dim_index_dict = {
-        output_dim_name: list(dims_size.keys()).index(input_dim_name)
-        for input_dim_name, output_dim_name in zip(input_dim_names, output_dim_names)
-    }
-
-    x_dims = dims_size[input_dim_names[0]]
-    y_dims = dims_size[input_dim_names[1]]
-    z_dims = dims_size[input_dim_names[2]]
     annotation_type = get_annotation_type(layer)
     if annotation_type == "line":
-        annotation_data = np.zeros((len(layer["annotations"]), 6))
-        for idx, current_annotation in enumerate(layer["annotations"]):
-            # assume that it is in url as m, so divide by 1e-9 to get it in nm
-            annotation_data[idx, :] = [
-                current_annotation["pointA"][dim_index_dict["x"]] * x_dims[0] * 1e9,
-                current_annotation["pointA"][dim_index_dict["y"]] * y_dims[0] * 1e9,
-                current_annotation["pointA"][dim_index_dict["z"]] * z_dims[0] * 1e9,
-                current_annotation["pointB"][dim_index_dict["x"]] * x_dims[0] * 1e9,
-                current_annotation["pointB"][dim_index_dict["y"]] * y_dims[0] * 1e9,
-                current_annotation["pointB"][dim_index_dict["z"]] * z_dims[0] * 1e9,
-            ]
+        rows = []
+        for current_annotation in layer["annotations"]:
+            # skip annotations with empty coordinates
+            if not current_annotation.get("pointA") or not current_annotation.get(
+                "pointB"
+            ):
+                continue
+            rows.append(
+                [
+                    current_annotation["pointA"][dim_index_dict["x"]]
+                    * x_dims[0]
+                    * 1e9,
+                    current_annotation["pointA"][dim_index_dict["y"]]
+                    * y_dims[0]
+                    * 1e9,
+                    current_annotation["pointA"][dim_index_dict["z"]]
+                    * z_dims[0]
+                    * 1e9,
+                    current_annotation["pointB"][dim_index_dict["x"]]
+                    * x_dims[0]
+                    * 1e9,
+                    current_annotation["pointB"][dim_index_dict["y"]]
+                    * y_dims[0]
+                    * 1e9,
+                    current_annotation["pointB"][dim_index_dict["z"]]
+                    * z_dims[0]
+                    * 1e9,
+                ]
+            )
+        annotation_data = np.array(rows) if rows else np.zeros((0, 6))
     elif annotation_type == "point":
-        annotation_data = np.zeros((len(layer["annotations"]), 3))
-        for idx, current_annotation in enumerate(layer["annotations"]):
-            # assume that it is in url as m, so divide by 1e-9 to get it in nm
-            annotation_data[idx, :] = [
-                current_annotation["point"][dim_index_dict["x"]] * x_dims[0] * 1e9,
-                current_annotation["point"][dim_index_dict["y"]] * y_dims[0] * 1e9,
-                current_annotation["point"][dim_index_dict["z"]] * z_dims[0] * 1e9,
-            ]
+        rows = []
+        for current_annotation in layer["annotations"]:
+            # skip annotations with empty coordinates
+            if not current_annotation.get("point"):
+                continue
+            rows.append(
+                [
+                    current_annotation["point"][dim_index_dict["x"]]
+                    * x_dims[0]
+                    * 1e9,
+                    current_annotation["point"][dim_index_dict["y"]]
+                    * y_dims[0]
+                    * 1e9,
+                    current_annotation["point"][dim_index_dict["z"]]
+                    * z_dims[0]
+                    * 1e9,
+                ]
+            )
+        annotation_data = np.array(rows) if rows else np.zeros((0, 3))
     else:
         return None, None
 
@@ -171,8 +217,13 @@ def extract_local_annotations(layer):
 
 def extract_precomputed_annotations(layer):
     base_directory = "/groups/cellmap/cellmap/"
-    source_url = get_layer_source_url(layer)
-    annotation_index = base_directory + source_url.split("dm11/")[1] + "/spatial0/0_0_0"
+    # Find the precomputed source URL (handles string, dict, or list sources)
+    source_urls = _get_source_urls(layer)
+    source_url = next(u for u in source_urls if "precomputed" in u)
+    # Strip protocol prefix and any trailing "|neuroglancer-precomputed:" suffix
+    path_part = source_url.split("dm11/")[1]
+    path_part = path_part.split("|")[0].rstrip("/")
+    annotation_index = base_directory + path_part + "/spatial0/0_0_0"
     with open(annotation_index, mode="rb") as file:
         annotation_index_content = file.read()
 
@@ -197,19 +248,9 @@ def extract_precomputed_annotations(layer):
     return annotation_type, annotation_data
 
 
-def write_precomputed_annotations(annotation_type, annotations):
-    write_time = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_directory = (
-        "/groups/cellmap/cellmap/ackermand/neuroglancer_annotations/" + write_time
-    )
-    while os.path.exists(output_directory):
-        sleep(1)
-        write_time = datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_directory = (
-            "/groups/cellmap/cellmap/ackermand/neuroglancer_annotations/" + write_time
-        )
-
-    os.makedirs(f"{output_directory}/spatial0")
+def _write_single_precomputed(output_directory, annotation_type, annotations):
+    """Write a single set of annotations to precomputed format on disk."""
+    os.makedirs(f"{output_directory}/spatial0", exist_ok=True)
 
     if annotation_type == "line":
         coords_to_write = 6
@@ -226,7 +267,6 @@ def write_precomputed_annotations(annotation_type, annotations):
         id_buf = struct.pack(
             f"<{total_count}Q", *range(1, len(annotations) + 1, 1)
         )  # so start at 1
-        # id_buf = struct.pack('<%sQ' % len(coordinates), 3,1 )#s*range(len(coordinates)))
         buf += id_buf
         outfile.write(buf)
 
@@ -259,10 +299,28 @@ def write_precomputed_annotations(annotation_type, annotations):
     with open(f"{output_directory}/info", "w") as info_file:
         json.dump(info, info_file)
 
-    return write_time, output_directory.replace(
+    return output_directory.replace(
         "/groups/cellmap/cellmap/ackermand/",
         "precomputed://https://cellmap-vm1.int.janelia.org/dm11/ackermand/",
     )
+
+
+def write_precomputed_annotations(annotation_type, annotations):
+    write_time = datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_directory = (
+        "/groups/cellmap/cellmap/ackermand/neuroglancer_annotations/" + write_time
+    )
+    while os.path.exists(output_directory):
+        sleep(1)
+        write_time = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_directory = (
+            "/groups/cellmap/cellmap/ackermand/neuroglancer_annotations/" + write_time
+        )
+
+    precomputed_source = _write_single_precomputed(
+        output_directory, annotation_type, annotations
+    )
+    return write_time, precomputed_source
 
 
 def generate_new_url(info_dict, precomputed_source):
@@ -326,6 +384,191 @@ def create_new_url_with_precomputed_annotations(neuroglancer_url):
         write_time,
         generate_new_url(info_dict, precomputed_source),
     )
+
+
+def _get_source_urls(layer):
+    """Get all source URLs from a layer, handling string, dict, or list sources."""
+    source = layer["source"]
+    if isinstance(source, list):
+        sources = source
+    else:
+        sources = [source]
+    urls = []
+    for s in sources:
+        if isinstance(s, str):
+            urls.append(s)
+        elif isinstance(s, dict) and "url" in s:
+            urls.append(s["url"])
+    return urls
+
+
+def get_all_annotation_layers(info_dict):
+    """Extract each annotation layer separately.
+    Returns list of (layer_name, annotation_type, annotations_array).
+    Every annotation layer is included even if it has 0 annotations.
+    """
+    results = []
+    for layer in info_dict["layers"]:
+        if layer["type"] == "annotation":
+            layer_name = layer.get("name", "annotations")
+            source_urls = _get_source_urls(layer)
+            has_precomputed = any("precomputed" in u for u in source_urls)
+            has_local = any("local://" in u for u in source_urls)
+
+            all_annotations = []
+            annotation_type = None
+
+            if has_precomputed:
+                annotation_type, annotations = extract_precomputed_annotations(layer)
+                annotations = apply_translation_to_annotations(layer, annotations)
+                if annotations is not None and len(annotations) > 0:
+                    all_annotations.append(annotations)
+
+            if has_local:
+                if layer.get("annotations"):
+                    annotation_type_local, annotations = extract_local_annotations(
+                        layer
+                    )
+                    if annotation_type is None:
+                        annotation_type = annotation_type_local
+                    if annotations is not None and len(annotations) > 0:
+                        all_annotations.append(annotations)
+
+            # Determine annotation type from tool if we still don't know
+            if annotation_type is None:
+                if "tool" in layer:
+                    annotation_type = get_annotation_type(layer)
+                else:
+                    annotation_type = "point"
+
+            if all_annotations:
+                combined = (
+                    np.concatenate(all_annotations)
+                    if len(all_annotations) > 1
+                    else all_annotations[0]
+                )
+            else:
+                # Empty array with correct shape
+                cols = 6 if annotation_type == "line" else 3
+                combined = np.zeros((0, cols))
+
+            results.append((layer_name, annotation_type, combined))
+    return results
+
+
+def write_multiple_precomputed_annotations(annotation_layers):
+    """Write multiple annotation layers to disk under a single timestamp.
+    Args: annotation_layers - list of (layer_name, annotation_type, annotations_array)
+    Returns: (write_time, list of (layer_name, precomputed_source_url))
+    """
+    write_time = datetime.now().strftime("%Y%m%d_%H%M%S")
+    base_dir = "/groups/cellmap/cellmap/ackermand/neuroglancer_annotations/" + write_time
+    while os.path.exists(base_dir):
+        sleep(1)
+        write_time = datetime.now().strftime("%Y%m%d_%H%M%S")
+        base_dir = (
+            "/groups/cellmap/cellmap/ackermand/neuroglancer_annotations/" + write_time
+        )
+
+    os.makedirs(base_dir)
+
+    precomputed_sources = []
+    seen_names = {}
+    for layer_name, annotation_type, annotations in annotation_layers:
+        # Skip empty layers — can't write empty precomputed files
+        if len(annotations) == 0:
+            continue
+
+        # sanitize layer name for directory
+        safe_name = re.sub(r"[^\w\-]", "_", layer_name)
+        # handle duplicate names
+        if safe_name in seen_names:
+            seen_names[safe_name] += 1
+            safe_name = f"{safe_name}_{seen_names[safe_name]}"
+        else:
+            seen_names[safe_name] = 0
+
+        output_directory = os.path.join(base_dir, safe_name)
+        precomputed_source = _write_single_precomputed(
+            output_directory, annotation_type, annotations
+        )
+        precomputed_sources.append((layer_name, precomputed_source))
+
+    return write_time, precomputed_sources
+
+
+def generate_new_url_multiple(info_dict, precomputed_sources):
+    """Generate a new neuroglancer URL adding precomputed sources into existing annotation layers.
+
+    Instead of creating new layers, each precomputed source is added as an
+    additional source within the matching annotation layer panel.
+
+    Args: info_dict - parsed neuroglancer state (will be deep-copied)
+          precomputed_sources - list of (layer_name, precomputed_source_url)
+    Returns: new neuroglancer URL string
+    """
+    info_dict = copy.deepcopy(info_dict)
+
+    # build lookup: layer_name -> precomputed_source_url
+    source_by_name = {name: src for name, src in precomputed_sources}
+
+    for layer in info_dict["layers"]:
+        if layer["type"] != "annotation":
+            continue
+
+        layer_name = layer.get("name", "annotations")
+        if layer_name not in source_by_name:
+            continue
+
+        precomputed_source = source_by_name[layer_name]
+
+        # Clear inline annotations to save URL space — they're now precomputed
+        layer["annotations"] = []
+
+        # Build source list: keep the local source for adding new annotations,
+        # drop any old precomputed sources, add the new precomputed one
+        existing_source = layer["source"]
+        if isinstance(existing_source, list):
+            source_list = existing_source
+        else:
+            source_list = [existing_source]
+
+        # Remove old precomputed sources
+        source_list = [
+            s
+            for s in source_list
+            if not (isinstance(s, str) and "precomputed" in s)
+            and not (isinstance(s, dict) and "precomputed" in s.get("url", ""))
+        ]
+
+        # Add the new precomputed source alongside the local one
+        source_list.append(precomputed_source)
+        layer["source"] = source_list
+
+    new_url = "https://neuroglancer-demo.appspot.com/#!" + urllib.parse.quote(
+        json.dumps(info_dict)
+    )
+    return new_url
+
+
+def create_new_url_with_multiple_precomputed_annotations(neuroglancer_url):
+    """Orchestrator for multi-layer annotation extraction.
+    Returns: (annotation_layers, write_time, new_url)
+        annotation_layers: list of (layer_name, annotation_type, annotations_array)
+    """
+    info_dict = json.loads(urllib.parse.unquote(neuroglancer_url.split("/#!")[1]))
+    annotation_layers = get_all_annotation_layers(info_dict)
+    # Only write to disk and generate new URL if there are actual annotations
+    has_data = any(len(a) > 0 for _, _, a in annotation_layers)
+    if has_data:
+        write_time, precomputed_sources = write_multiple_precomputed_annotations(
+            annotation_layers
+        )
+        new_url = generate_new_url_multiple(info_dict, precomputed_sources)
+    else:
+        write_time = datetime.now().strftime("%Y%m%d_%H%M%S")
+        new_url = None
+    return annotation_layers, write_time, new_url
 
 
 def set_local_annotations(neuroglancer_url):
