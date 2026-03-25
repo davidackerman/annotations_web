@@ -41,6 +41,7 @@ function UploadUsingCSVData() {
 var uploaded_annotation_layer = null;
 function Upload() {
     uploaded_annotations = []
+    console.log("uploaded annotations" + uploaded_annotation_layer)
     var fileUpload = document.getElementById("fileUpload");
     if (typeof (FileReader) != "undefined") {
         var reader = new FileReader();
@@ -88,6 +89,7 @@ function Upload() {
             dvCSV.appendChild(table);
         }
         reader.readAsText(fileUpload.files[0]);
+        console.log(uploaded_annotation_layer)
     } else {
         alert("This browser does not support HTML5.");
     }
@@ -109,7 +111,7 @@ function extract()
             break;
         }
     }
-    if (uploaded_annotation_layer["annotations"].length == 0) {
+    if (uploaded_annotations.length == 0) {
         alert("No annotations uploaded.");
     }
     else {
@@ -117,16 +119,17 @@ function extract()
             neuroglancer_json["layers"].push(uploaded_annotation_layer);
         }
         else {
-            var x_scale = uploaded_annotation_layer['source']['transform']['outputDimensions']["x"][0] / current_annotation_layer['source']['transform']['outputDimensions']["x"][0]
-            var y_scale = uploaded_annotation_layer['source']['transform']['outputDimensions']["y"][0] / current_annotation_layer['source']['transform']['outputDimensions']["y"][0]
-            var z_scale = uploaded_annotation_layer['source']['transform']['outputDimensions']["z"][0] / current_annotation_layer['source']['transform']['outputDimensions']["z"][0]
-            for (var j = 0; j < uploaded_annotation_layer['annotations'].length; j++) {
-                uploaded_annotation_layer['annotations'][j]["pointA"][0] *= x_scale
-                uploaded_annotation_layer['annotations'][j]["pointA"][1] *= y_scale
-                uploaded_annotation_layer['annotations'][j]["pointA"][2] *= z_scale
-                uploaded_annotation_layer['annotations'][j]["pointB"][0] *= x_scale
-                uploaded_annotation_layer['annotations'][j]["pointB"][1] *= y_scale
-                uploaded_annotation_layer['annotations'][j]["pointB"][2] *= z_scale
+            uploaded_annotation_layer = []
+            //var x_scale = uploaded_annotation_layer['source']['transform']['outputDimensions']["x"][0] / current_annotation_layer['source']['transform']['outputDimensions']["x"][0]
+            //var y_scale = uploaded_annotation_layer['source']['transform']['outputDimensions']["y"][0] / current_annotation_layer['source']['transform']['outputDimensions']["y"][0]
+            //var z_scale = uploaded_annotation_layer['source']['transform']['outputDimensions']["z"][0] / current_annotation_layer['source']['transform']['outputDimensions']["z"][0]
+            for (var j = 0; j < uploaded_annotations.length; j++) {
+                uploaded_annotation_layer['annotations'][j]["pointA"][0] = uploaded_annotations[j]['pointA'][0]
+                uploaded_annotation_layer['annotations'][j]["pointA"][1] = uploaded_annotations[j]['pointA'][1]
+                uploaded_annotation_layer['annotations'][j]["pointA"][2] = uploaded_annotations[j]['pointA'][2]
+                uploaded_annotation_layer['annotations'][j]["pointB"][0] = uploaded_annotations[j]['pointA'][0]
+                uploaded_annotation_layer['annotations'][j]["pointB"][1] = uploaded_annotations[j]['pointA'][1]
+                uploaded_annotation_layer['annotations'][j]["pointB"][2] = uploaded_annotations[j]['pointA'][2]
             }
             current_annotation_layer["annotations"] = current_annotation_layer["annotations"].concat(uploaded_annotation_layer["annotations"])
             neuroglancer_json['layers'][annotation_layer_idx] = current_annotation_layer
