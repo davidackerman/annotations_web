@@ -18,11 +18,17 @@ def get_annotations_from_url(neuroglancer_url):
 
 
 def get_annotation_type(layer):
-    # hacky way to get annotation type, we are currently assuming only one type of annotation is present for each layer
-    # and that it is the currently selected annotation type
-    tool = layer["tool"]
-    annotation_type = tool.split("annotate")[1].lower()
-    return annotation_type
+    # Prefer the actual annotation entry's `type` field over the tool field —
+    # the tool can disagree with the data (e.g. tool=annotateLine but entries
+    # are type=point), and the tool has no entry for axis_aligned_bounding_box.
+    for ann in layer.get("annotations") or []:
+        if "type" in ann:
+            return ann["type"]
+    tool = layer.get("tool", "")
+    tool_type = tool.split("annotate")[1].lower() if "annotate" in tool else ""
+    if tool_type == "boundingbox":
+        return "axis_aligned_bounding_box"
+    return tool_type
 
 
 def get_layer_source_url(layer):
@@ -158,7 +164,7 @@ def extract_local_annotations(layer):
         z_dims = [1e-9]
 
     annotation_type = get_annotation_type(layer)
-    if annotation_type == "line":
+    if annotation_type in ("line", "axis_aligned_bounding_box"):
         rows = []
         for current_annotation in layer["annotations"]:
             # skip annotations with empty coordinates
@@ -252,7 +258,7 @@ def _write_single_precomputed(output_directory, annotation_type, annotations):
     """Write a single set of annotations to precomputed format on disk."""
     os.makedirs(f"{output_directory}/spatial0", exist_ok=True)
 
-    if annotation_type == "line":
+    if annotation_type in ("line", "axis_aligned_bounding_box"):
         coords_to_write = 6
     else:
         coords_to_write = 3
@@ -436,10 +442,8 @@ def get_all_annotation_layers(info_dict):
 
             # Determine annotation type from tool if we still don't know
             if annotation_type is None:
-                if "tool" in layer:
-                    annotation_type = get_annotation_type(layer)
-                else:
-                    annotation_type = "point"
+                detected = get_annotation_type(layer)
+                annotation_type = detected if detected else "point"
 
             if all_annotations:
                 combined = (
@@ -449,7 +453,7 @@ def get_all_annotation_layers(info_dict):
                 )
             else:
                 # Empty array with correct shape
-                cols = 6 if annotation_type == "line" else 3
+                cols = 6 if annotation_type in ("line", "axis_aligned_bounding_box") else 3
                 combined = np.zeros((0, cols))
 
             results.append((layer_name, annotation_type, combined))
